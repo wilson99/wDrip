@@ -32,5 +32,6 @@ dependencies {
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
     implementation 'com.google.android.gms:play-services-wearable:+'
     implementation 'com.github.lecho:hellocharts-library:1.5.8@aar'
-
+    implementation 'com.inuker.bluetooth:library:1.4.0'
+    wearApp project(':wear')
 }

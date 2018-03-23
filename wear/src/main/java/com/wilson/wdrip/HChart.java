@@ -162,9 +162,10 @@ public class HChart extends WatchFace implements SharedPreferences.OnSharedPrefe
                 txtView.setText("已发现服务");
             } else if (HCollectionService.ACTION_DATA_AVAILABLE.equals(action)) {
                 //displayData(intent.getStringExtra(BluetoothLeService.EXTRA_DATA));
-                txtView.setText("已获取数据");
                 int heartRate = intent.getIntExtra(HCollectionService.EXTRA_DATA, 0);
-                setBGLine(heartRate, "", System.currentTimeMillis());
+                long heartTime = intent.getLongExtra(HCollectionService.EXTRA_TIME, 0);
+                txtView.setText(String.format("已获取数据:%s", heartRate));
+                setBGLine(heartRate, "", heartTime);
             }
         }
     };
@@ -237,7 +238,8 @@ public class HChart extends WatchFace implements SharedPreferences.OnSharedPrefe
     }
 
     private void setBGLine(int s2, String sDirection, long...aTime) {
-        double dBG = CommonUtil.formatValue(s2);
+        //double dBG = CommonUtil.formatValue(s2);
+        double dBG = s2;
 
         long lTime = System.currentTimeMillis();
         if (aTime != null)
@@ -318,8 +320,8 @@ public class HChart extends WatchFace implements SharedPreferences.OnSharedPrefe
         Viewport tempViewport = new Viewport(chartView.getMaximumViewport());
         long lTime = System.currentTimeMillis();
 
-        tempViewport.left = CommonUtil.fuzz(lTime - 60*60*1000);
-        tempViewport.right = CommonUtil.fuzz(lTime + 30*60*1000);
+        tempViewport.left = CommonUtil.fuzz(lTime - 4*60*1000);
+        tempViewport.right = CommonUtil.fuzz(lTime + 1*60*1000);
         if (move) {
             chartView.setCurrentViewport(tempViewport);
         }

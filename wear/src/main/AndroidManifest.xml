@@ -16,6 +16,8 @@
 
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Required for complications to receive complication data and open the provider chooser. -->
     <uses-permission android:name="com.google.android.wearable.permission.RECEIVE_COMPLICATION_DATA" />
 
@@ -133,6 +135,18 @@
                     android:host="*"
                     android:pathPrefix="/openwearsettings"
                     android:scheme="wear" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".Services.DataLayerListenerService" >
+            <intent-filter>
+                <!-- listeners receive events that match the action and data filters -->
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/BGData"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/start-activity"/>
             </intent-filter>
         </service>
         <service

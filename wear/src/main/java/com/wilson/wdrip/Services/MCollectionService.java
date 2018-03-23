@@ -18,6 +18,9 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 
+import com.google.android.gms.wearable.PutDataMapRequest;
+import com.google.android.gms.wearable.PutDataRequest;
+
 import java.util.ArrayList;
 import java.util.UUID;
 
@@ -36,6 +39,9 @@ public class MCollectionService extends Service {
     static UUID UUID_WRITE_CHARACTER = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
 
     static UUID CLIENT_CHARACTERISTIC_CONFIG = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
+
+    private static final String BG_PATH = "/BGData";
+    private static final String BG_KEY = "BGData";
 
     private BluetoothManager mBluetoothManager;
     private BluetoothAdapter mBluetoothAdapter;
@@ -192,6 +198,12 @@ public class MCollectionService extends Service {
                         }
                         intent.putExtra(EXTRA_DATA, c);
                         sendBroadcast(intent);
+
+                        PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(BG_PATH);
+                        putDataMapRequest.getDataMap().putByteArray(BG_KEY, c);
+
+                        PutDataRequest request = putDataMapRequest.asPutDataRequest();
+                        request.setUrgent();
                     }
                 }
             }

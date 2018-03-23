@@ -1,4 +1,4 @@
-package com.wilson.wdrip;
+package com.wilson.wdrip.utils;
 
 import android.text.TextUtils;
 

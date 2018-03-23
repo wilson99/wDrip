@@ -2,38 +2,42 @@ package com.wilson.wdrip;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothGattCharacteristic;
-import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.ServiceConnection;
-import android.graphics.Color;
+import android.content.pm.ResolveInfo;
+import android.database.Cursor;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.IBinder;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
-import android.widget.ExpandableListView;
 import android.widget.TextView;
 
-import com.wilson.wdrip.Services.HCollectionService;
+import com.inuker.bluetooth.library.connect.listener.BleConnectStatusListener;
+import com.inuker.bluetooth.library.connect.listener.BluetoothStateListener;
+import com.inuker.bluetooth.library.connect.options.BleConnectOptions;
+import com.inuker.bluetooth.library.connect.response.BleConnectResponse;
+import com.inuker.bluetooth.library.connect.response.BleNotifyResponse;
+import com.inuker.bluetooth.library.connect.response.BleWriteResponse;
+import com.inuker.bluetooth.library.model.BleGattProfile;
+import com.inuker.bluetooth.library.search.SearchRequest;
+import com.inuker.bluetooth.library.search.SearchResult;
+import com.inuker.bluetooth.library.search.response.SearchResponse;
+import com.inuker.bluetooth.library.utils.BluetoothLog;
+import com.inuker.bluetooth.library.utils.BluetoothUtils;
 import com.wilson.wdrip.data.BGData;
-import com.wilson.wdrip.data.BgWatchData;
-import com.wilson.wdrip.utils.BgGraphBuilder;
+import com.wilson.wdrip.utils.ClientManager;
 import com.wilson.wdrip.utils.CommonUtil;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -50,25 +54,21 @@ import lecho.lib.hellocharts.util.ChartUtils;
 import lecho.lib.hellocharts.view.LineChartView;
 import lecho.lib.hellocharts.view.PreviewLineChartView;
 
-public class MainActivity extends Activity {
-    private final static String TAG = MainActivity.class.getSimpleName();
-    public View layoutView;
+import static com.inuker.bluetooth.library.Code.REQUEST_SUCCESS;
+import static com.inuker.bluetooth.library.Constants.STATUS_CONNECTED;
+import static com.inuker.bluetooth.library.Constants.STATUS_DISCONNECTED;
 
-    private static final String MAC = "F2:11:7F:A6:B8:FD";
-    static UUID UUID_NOTIF_SERVICE = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb");
-    static UUID UUID_NOTIF_CHARACTER = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb");
 
-    public int highColor = Color.YELLOW;
-    public int lowColor = Color.RED;
-    public int midColor = Color.WHITE;
-    public int pointSize = 2;
-    public BgGraphBuilder bgGraphBuilder;
-    public LineChartView chart;
-    public ArrayList<BgWatchData> bgDataList = new ArrayList<>();
-
-    private HCollectionService mBTService;
-
+public class Main2Activity extends Activity {
     String ACTION_DATABASE = "info.nightscout.client.DBACCESS";
+
+    private static final String MAC = "F4:98:28:9D:AC:A4";
+
+    static UUID UUID_NOTIF_SERVICE = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+    static UUID UUID_WRITE_SERVICE = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+    static UUID UUID_NOTIF_CHARACTER = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
+    static UUID UUID_WRITE_CHARACTER = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
+
 
     private BluetoothDevice blueDevice;
     private boolean mConnected;
@@ -94,89 +94,20 @@ public class MainActivity extends Activity {
     private int lastSensorTime = 0;
     private long lastBGTime = 0;
     private double lastBG = 0;
-    private boolean bForceWear = true;
-
-    public static final String EXTRAS_DEVICE_NAME = "DEVICE_NAME";
-    public static final String EXTRAS_DEVICE_ADDRESS = "DEVICE_ADDRESS";
-
-    private TextView mConnectionState;
-    private TextView mDataField;
-    private String mDeviceName;
-    private String mDeviceAddress;
-    private ExpandableListView mGattServicesList;
-    private ArrayList<ArrayList<BluetoothGattCharacteristic>> mGattCharacteristics =
-            new ArrayList<ArrayList<BluetoothGattCharacteristic>>();
-    private BluetoothGattCharacteristic mNotifyCharacteristic;
-
-    private final String LIST_NAME = "NAME";
-    private final String LIST_UUID = "UUID";
-
-    // Code to manage Service lifecycle.
-    private final ServiceConnection mServiceConnection = new ServiceConnection() {
-
-        @Override
-        public void onServiceConnected(ComponentName componentName, IBinder service) {
-            Log.v(TAG, "Service Connected");
-            mBTService = ((HCollectionService.LocalBinder) service).getService();
-            if (!mBTService.initialize()) {
-                Log.e(TAG, "Unable to initialize Bluetooth");
-            }
-            // Automatically connects to the device upon successful start-up initialization.
-            //mBluetoothLeService.connect(mDeviceAddress);
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName componentName) {
-            mBTService = null;
-        }
-    };
-
-    // Handles various events fired by the Service.
-    // ACTION_GATT_CONNECTED: connected to a GATT server.
-    // ACTION_GATT_DISCONNECTED: disconnected from a GATT server.
-    // ACTION_GATT_SERVICES_DISCOVERED: discovered GATT services.
-    // ACTION_DATA_AVAILABLE: received data from the device.  This can be a result of read
-    //                        or notification operations.
-    private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            if (HCollectionService.ACTION_GATT_CONNECTED.equals(action)) {
-                mConnected = true;
-                txtView.setText("已连接");
-            } else if (HCollectionService.ACTION_GATT_DISCONNECTED.equals(action)) {
-                mConnected = false;
-                txtView.setText("未连接");
-                //clearUI();
-            } else if (HCollectionService.ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
-                // Show all the supported services and characteristics on the user interface.
-                //displayGattServices(mBluetoothLeService.getSupportedGattServices());
-                txtView.setText("已发现服务");
-            } else if (HCollectionService.ACTION_DATA_AVAILABLE.equals(action)) {
-                //displayData(intent.getStringExtra(BluetoothLeService.EXTRA_DATA));
-                int heartRate = intent.getIntExtra(HCollectionService.EXTRA_DATA, 0);
-                long heartTime = intent.getLongExtra(HCollectionService.EXTRA_TIME, 0);
-                txtView.setText(String.format("已获取数据:%s", heartRate));
-
-                setBGLine(heartRate, "", heartTime);
-            }
-        }
-    };
+    private List<SearchResult> mDevices;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-//        LayoutInflater inflater = (LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-//        layoutView = inflater.inflate(R.layout.activity_hchart, null);
         setContentView(R.layout.activity_main);
+
+        mDevices = new ArrayList<SearchResult>();
 
         ignoreBatteryOptimization(this);
 
-        txtView = (TextView) findViewById(R.id.textView);
-        txtCurrentBG = (TextView) findViewById(R.id.txtCurrentBG);
-        txtDirection = (TextView) findViewById(R.id.txtDirection);
-
-        chartView = (LineChartView) findViewById(R.id.chart);
+        txtView = (TextView) this.findViewById(R.id.textView);
+        txtCurrentBG = (TextView) this.findViewById(R.id.txtCurrentBG);
+        txtDirection = (TextView) this.findViewById(R.id.txtDirection);
 
         chartView = (LineChartView) this.findViewById(R.id.chart);
         previewView = (PreviewLineChartView) this.findViewById(R.id.chart_preview);
@@ -184,32 +115,23 @@ public class MainActivity extends Activity {
         generateDefaultAxis();
         generateDefaultData();
 
-        mDeviceAddress = MAC;
-
-        Log.v(TAG, "Start bind service.....");
-        if (!bForceWear) {
-            Intent gattServiceIntent = new Intent(this, HCollectionService.class);
-            bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
+        BluetoothLog.v("fsdaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        if (!BluetoothUtils.isBluetoothEnabled()) {
+            BluetoothUtils.openBluetooth();
         }
-        registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
 
-    }
+        blueDevice = BluetoothUtils.getRemoteDevice(MAC);
+        ClientManager.getClient().registerConnectStatusListener(MAC, mConnectStatusListener);
+        connectDeviceIfNeeded();
 
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        unregisterReceiver(mGattUpdateReceiver);
-        unbindService(mServiceConnection);
-        mBTService = null;
-    }
+        ClientManager.getClient().registerBluetoothStateListener(new BluetoothStateListener() {
+            @Override
+            public void onBluetoothStateChanged(boolean openOrClosed) {
+                BluetoothLog.v(String.format("onBluetoothStateChanged %b", openOrClosed));
+            }
+        });
+        BluetoothLog.v("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
-    private static IntentFilter makeGattUpdateIntentFilter() {
-        final IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(HCollectionService.ACTION_GATT_CONNECTED);
-        intentFilter.addAction(HCollectionService.ACTION_GATT_DISCONNECTED);
-        intentFilter.addAction(HCollectionService.ACTION_GATT_SERVICES_DISCOVERED);
-        intentFilter.addAction(HCollectionService.ACTION_DATA_AVAILABLE);
-        return intentFilter;
     }
 
     /**
@@ -223,7 +145,6 @@ public class MainActivity extends Activity {
         //  判断当前APP是否有加入电池优化的白名单，如果没有，弹出加入电池优化的白名单的设置对话框。
         if(!hasIgnored) {
             Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             intent.setData(Uri.parse("package:"+activity.getPackageName()));
             startActivity(intent);
         }
@@ -246,8 +167,7 @@ public class MainActivity extends Activity {
     }
 
     private void setBGLine(int s2, String sDirection, long...aTime) {
-        //double dBG = CommonUtil.formatValue(s2);
-        double dBG = s2;
+        double dBG = CommonUtil.formatValue(s2);
 
         long lTime = System.currentTimeMillis();
         if (aTime != null)
@@ -355,11 +275,119 @@ public class MainActivity extends Activity {
         }
     }
 
+
+    private final BleConnectStatusListener mConnectStatusListener = new BleConnectStatusListener() {
+        @Override
+        public void onConnectStatusChanged(String mac, int status) {
+            BluetoothLog.v(String.format("DeviceDetailActivity onConnectStatusChanged %d in %s",
+                    status, Thread.currentThread().getName()));
+            BluetoothLog.v("-----------------------" + status );
+            if (status == STATUS_CONNECTED) {
+                sConnectStatus = "已连接";
+                iConnectRetry = 0;
+            }
+            else if (status == STATUS_DISCONNECTED) {
+                sConnectStatus = "未连接";
+                iConnectRetry ++;
+            }
+            txtView.setText(sConnectStatus);
+            mConnected = (status == STATUS_CONNECTED);
+            connectDeviceIfNeeded();
+        }
+    };
+
+    private void connectDevice() {
+        txtView.setText("重新连接..."+iConnectRetry);
+        BleConnectOptions options = new BleConnectOptions.Builder()
+                .setConnectRetry(0)
+                .setConnectTimeout(20000)
+                .setServiceDiscoverRetry(0)
+                .setServiceDiscoverTimeout(10000)
+                .build();
+
+        ClientManager.getClient().connect(blueDevice.getAddress(), options, new BleConnectResponse() {
+            @Override
+            public void onResponse(int code, BleGattProfile profile) {
+                BluetoothLog.v(String.format("profile:\n%s", profile));
+                if (code == REQUEST_SUCCESS) {
+                    ClientManager.getClient().notify(MAC, UUID_NOTIF_SERVICE, UUID_NOTIF_CHARACTER, mNotifyRsp);
+                }
+            }
+        });
+    }
+
+    private void connectDeviceIfNeeded() {
+        if (!mConnected) {
+            connectDevice();
+        }
+    }
+
+    BleWriteResponse mWriteRsp = new BleWriteResponse()
+    {
+        public void onResponse(int paramAnonymousInt)
+        {
+            if (paramAnonymousInt == 0) {}
+        }
+    };
+
+    private final BleNotifyResponse mNotifyRsp = new BleNotifyResponse() {
+        ArrayList<Byte> bytes = new ArrayList();
+        @Override
+        public void onNotify(UUID service, UUID character, byte[] value) {
+            BluetoothLog.v(String.format("Notify---------------------------------- : %s", Arrays.toString(value)));
+            if (service.equals(UUID_NOTIF_SERVICE) && character.equals(UUID_NOTIF_CHARACTER)) {
+                if (value.length > 1) {
+                    if ((int)value[0] == 40)
+                        this.bytes = new ArrayList();
+                    for (byte b : value)
+                        bytes.add(Byte.valueOf(b));
+                    if ((int)value[value.length-1] == 41)
+                        parseAll(bytes);
+                }
+            }
+        }
+
+        @Override
+        public void onResponse(int code) {
+            if (code == REQUEST_SUCCESS) {
+                //CommonUtils.toast("success");
+                BluetoothLog.v(String.format("----------------------------------Notify Response code : %s", code));
+                ClientManager.getClient().write(MAC, UUID_WRITE_SERVICE, UUID_WRITE_CHARACTER, new byte[] { 48 }, mWriteRsp);
+            } else {
+                //CommonUtils.toast("failed");
+            }
+        }
+    };
+
+    @Override
+    protected void onDestroy() {
+        ClientManager.getClient().disconnect(blueDevice.getAddress());
+        ClientManager.getClient().unregisterConnectStatusListener(blueDevice.getAddress(), mConnectStatusListener);
+        super.onDestroy();
+    }
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.main, menu);
         return true;
+    }
+
+    private void Reconnect(boolean bRestart) {
+        if (bRestart) {
+            //ClientManager.getClient().closeBluetooth();
+            //ClientManager.getClient().openBluetooth();
+            ClientManager.getClient().disconnect(MAC);
+            ClientManager.getClient().unregisterConnectStatusListener(blueDevice.getAddress(), mConnectStatusListener);
+        } else {
+            ClientManager.getClient().disconnect(MAC);
+            ClientManager.getClient().unregisterConnectStatusListener(blueDevice.getAddress(), mConnectStatusListener);
+        }
+
+        blueDevice = BluetoothUtils.getRemoteDevice(MAC);
+        ClientManager.getClient().registerConnectStatusListener(MAC, mConnectStatusListener);
+
+        iConnectRetry = 0;
     }
 
     @Override
@@ -372,10 +400,10 @@ public class MainActivity extends Activity {
             //Intent intent = new Intent(this, SearchActivity.class);
             //startActivity(intent);
             txtView.setText("重新连接...");
-            //Reconnect(false);
+            Reconnect(false);
             return true;
         } else if (id == R.id.action_nstest) {
-            //searchDevice();
+            searchDevice();
             return true;
         }
         return super.onOptionsItemSelected(item);
@@ -471,7 +499,7 @@ public class MainActivity extends Activity {
             }
 
             sText = String.format("%s, %.2f", sText, dBG);
-            Log.v("parseAll", String.format("%s---%s---%s---%2.1f",(i-18)/2+1,s1,s2,dBG));
+            BluetoothLog.v(String.format("%s---%s---%s---%2.1f",(i-18)/2+1,s1,s2,dBG));
 
             i++;
         }
@@ -482,13 +510,12 @@ public class MainActivity extends Activity {
             playRingtoneDefault();
 
         lastSensorTime = k;
-        Log.v("parseAll", sText);
+        BluetoothLog.v(sText);
         txtView.setText(sText);
-//        CommonUtil.saveLog(sText + "\r\n");
+        CommonUtil.saveLog(sText + "\r\n");
         txtCurrentBG.setText(String.format("%.1f", CommonUtil.formatValue(tmpBGData1.iBG)));
 
     }
-
 
     private void uploadNS(int s2, String sDirection, long lTime) {
         Log.d("NS","----- Add BG -----");
@@ -499,7 +526,7 @@ public class MainActivity extends Activity {
         // So onUpdate looks for "NSCLIENTTESTRECORD" key
         try {
             //Context context = MainApp.instance().getApplicationContext();
-            Context context = wDrip.getAppContext();
+            Context context = wDrip.getInstance().getApplicationContext();
             JSONObject data = new JSONObject();
             data.put("date", lTime); // add long date
             data.put("dateString", CommonUtil.toISOString(new Date(lTime)));
@@ -525,11 +552,102 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void createTestBroadast() {
+        Thread testAddTreatment =  new Thread(){
+            @Override
+            public void run() {
+                Log.d("NS","----- TEST ACTION -----");
+                // Create new record with 1U of insulin and 24g of carbs
+                //
+                // there is a little hack because I don't receive treatments broadcasts here
+                // I have to receive _id of created record via MainApp().bus()
+                // So onUpdate looks for "NSCLIENTTESTRECORD" key
+                try {
+                    //Context context = MainApp.instance().getApplicationContext();
+                    Context context = wDrip.getInstance().getApplicationContext();
+                    JSONObject data = new JSONObject();
+                    data.put("eventType", "Meal Bolus");
+                    data.put("insulin", 1);
+                    data.put("carbs", 24);
+                    data.put("created_at", CommonUtil.toISOString(new Date()));
+                    data.put("NSCLIENTTESTRECORD", "NSCLIENTTESTRECORD");
+                    Bundle bundle = new Bundle();
+                    bundle.putString("action", "dbAdd");
+                    bundle.putString("collection", "treatments"); // "treatments" || "entries" || "devicestatus" || "profile" || "food"
+                    bundle.putString("data", data.toString());
+                    Intent intent = new Intent(ACTION_DATABASE);
+                    intent.putExtras(bundle);
+                    intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+                    context.sendBroadcast(intent);
+                    List<ResolveInfo> q = context.getPackageManager().queryBroadcastReceivers(intent, 0);
+                    if (q.size() < 1) {
+                        Log.e("NS","TEST DBADD No receivers");
+                    } else Log.d("NS","TEST DBADD dbAdd " + q.size() + " receivers");
+                } catch (JSONException e) {
+                }
+            }
+        };
+        testAddTreatment.start();
+    }
+
     private void playRingtoneDefault(){
         Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) ;
         Ringtone mRingtone = RingtoneManager.getRingtone(this,uri);
         mRingtone.play();
     }
 
+    private void ShufflePlayback(){
+        RingtoneManager manager = new RingtoneManager(this) ;
+        Cursor cursor = manager.getCursor();
+        int count = cursor.getCount() ;
+        int position = (int)(Math.random()*count) ;
+        Ringtone mRingtone = manager.getRingtone(position) ;
+        mRingtone.play();
+    }
 
+
+    private void searchDevice() {
+        SearchRequest request = new SearchRequest.Builder()
+                .searchBluetoothLeDevice(5000, 2).build();
+
+        ClientManager.getClient().search(request, mSearchResponse);
+    }
+
+    private final SearchResponse mSearchResponse = new SearchResponse() {
+        @Override
+        public void onSearchStarted() {
+            BluetoothLog.w("MainActivity.onSearchStarted");
+
+            txtView.setText("蓝牙扫描中。。。");
+            mDevices.clear();
+        }
+
+        @Override
+        public void onDeviceFounded(SearchResult device) {
+//            BluetoothLog.w("MainActivity.onDeviceFounded " + device.device.getAddress());
+            txtView.setText("发现设备： " + device.getName() + " : " + device.getAddress());
+            if (device.getAddress() == MAC) {
+                ClientManager.getClient().stopSearch();
+            }
+        }
+
+        @Override
+        public void onSearchStopped() {
+            BluetoothLog.w("MainActivity.onSearchStopped");
+            txtView.setText("Search Stopped");
+        }
+
+        @Override
+        public void onSearchCanceled() {
+            BluetoothLog.w("MainActivity.onSearchCanceled");
+
+            txtView.setText("Search Canceled");
+        }
+    };
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        ClientManager.getClient().stopSearch();
+    }
 }

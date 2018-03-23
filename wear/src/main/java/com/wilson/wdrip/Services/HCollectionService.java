@@ -18,9 +18,17 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.Tasks;
+import com.google.android.gms.wearable.DataItem;
+import com.google.android.gms.wearable.PutDataMapRequest;
+import com.google.android.gms.wearable.PutDataRequest;
+import com.google.android.gms.wearable.Wearable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Created by wzhan025 on 3/13/2018.
@@ -48,15 +56,17 @@ public class HCollectionService extends Service {
     private static final int STATE_CONNECTED = 2;
 
     public final static String ACTION_GATT_CONNECTED =
-            "com.example.bluetooth.le.ACTION_GATT_CONNECTED";
+            "com.wilson.wdrip.ACTION_GATT_CONNECTED";
     public final static String ACTION_GATT_DISCONNECTED =
-            "com.example.bluetooth.le.ACTION_GATT_DISCONNECTED";
+            "com.wilson.wdrip.ACTION_GATT_DISCONNECTED";
     public final static String ACTION_GATT_SERVICES_DISCOVERED =
-            "com.example.bluetooth.le.ACTION_GATT_SERVICES_DISCOVERED";
+            "com.wilson.wdrip.ACTION_GATT_SERVICES_DISCOVERED";
     public final static String ACTION_DATA_AVAILABLE =
-            "com.example.bluetooth.le.ACTION_DATA_AVAILABLE";
+            "com.wilson.wdrip.ACTION_DATA_AVAILABLE";
     public final static String EXTRA_DATA =
-            "com.example.bluetooth.le.EXTRA_DATA";
+            "com.wilson.wdrip.EXTRA_DATA";
+    public final static String EXTRA_TIME =
+            "com.wilson.wdrip.EXTRA_TIME";
 
     private BluetoothGattService cgmService;// = gatt.getService(UUID.fromString(BluetoothServices.CGMService));
     private BluetoothGattCharacteristic authCharacteristic;// = cgmService.getCharacteristic(UUID.fromString(BluetoothServices.Authentication));
@@ -114,9 +124,9 @@ public class HCollectionService extends Service {
                     //authCharacteristic = cgmService.getCharacteristic(UUID_WRITE_CHARACTER);
                     controlCharacteristic = cgmService.getCharacteristic(UUID_NOTIF_CHARACTER);
                     // TODO can we remove the below comm line
-                    //BluetoothGattDescriptor descriptor = controlCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG);
-                    //descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                    //mBluetoothGatt.writeDescriptor(descriptor);
+                    BluetoothGattDescriptor descriptor = controlCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG);
+                    descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                    mBluetoothGatt.writeDescriptor(descriptor);
 
                     gatt.setCharacteristicNotification(controlCharacteristic, true);
 
@@ -183,10 +193,38 @@ public class HCollectionService extends Service {
                 format = BluetoothGattCharacteristic.FORMAT_UINT8;
                 Log.d(TAG, "Heart rate format UINT8.");
             }
-            final int heartRate = characteristic.getIntValue(format, 1);
+            int heartRate = characteristic.getIntValue(format, 1);
+            long heartTime = System.currentTimeMillis();
             Log.d(TAG, String.format("Received heart rate: %d", heartRate));
-            intent.putExtra(EXTRA_DATA, String.valueOf(heartRate));
+            intent.putExtra(EXTRA_DATA, heartRate);
+            intent.putExtra(EXTRA_TIME, heartTime);
             sendBroadcast(intent);
+
+            PutDataMapRequest putDataMapRequest = PutDataMapRequest.create("/BGData");
+            putDataMapRequest.getDataMap().putInt("BGData", heartRate);
+            putDataMapRequest.getDataMap().putLong("BGTime", heartTime);
+
+            PutDataRequest request = putDataMapRequest.asPutDataRequest();
+            request.setUrgent();
+
+            Log.v(TAG, "Generating DataItem: " + request);
+
+            Task<DataItem> dataItemTask =
+                    Wearable.getDataClient(getApplicationContext()).putDataItem(request);
+
+            try {
+                // Block on a task and get the result synchronously (because this is on a background
+                // thread).
+                DataItem dataItem = Tasks.await(dataItemTask);
+
+                Log.v(TAG, "DataItem saved: " + dataItem);
+
+            } catch (ExecutionException exception) {
+                Log.e(TAG, "Task failed: " + exception);
+
+            } catch (InterruptedException exception) {
+                Log.e(TAG, "Interrupt occurred: " + exception);
+            }
         }
     }
 
@@ -236,12 +274,14 @@ public class HCollectionService extends Service {
             return false;
         }
 
-        mBluetoothAdapter.startDiscovery();
-        Log.v(TAG, "Start Discovering...");
+//        mBluetoothAdapter.startDiscovery();
+//        Log.v(TAG, "Start Discovering...");
+//
+//        // Register the BroadcastReceiver
+//        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+//        registerReceiver(mReceiver, filter); // Don't forget to unregister during onDestroy
 
-        // Register the BroadcastReceiver
-        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-        registerReceiver(mReceiver, filter); // Don't forget to unregister during onDestroy
+        connect(MAC);
 
         return true;
     }

@@ -141,9 +141,10 @@ public class MainActivity extends WearableActivity {
                 txtView.setText("已发现服务");
             } else if (HCollectionService.ACTION_DATA_AVAILABLE.equals(action)) {
                 //displayData(intent.getStringExtra(BluetoothLeService.EXTRA_DATA));
-                txtView.setText("已获取数据");
                 int heartRate = intent.getIntExtra(HCollectionService.EXTRA_DATA, 0);
-                setBGLine(heartRate, "", System.currentTimeMillis());
+                long heartTime = intent.getLongExtra(HCollectionService.EXTRA_TIME, 0);
+                txtView.setText(String.format("已获取数据:%s", heartRate));
+                setBGLine(heartRate, "", heartTime);
             }
         }
     };
@@ -224,7 +225,8 @@ public class MainActivity extends WearableActivity {
     }
 
     private void setBGLine(int s2, String sDirection, long...aTime) {
-        double dBG = CommonUtil.formatValue(s2);
+        //double dBG = CommonUtil.formatValue(s2);
+        double dBG = s2;
 
         long lTime = System.currentTimeMillis();
         if (aTime != null)
@@ -234,7 +236,7 @@ public class MainActivity extends WearableActivity {
         pValues.add(new PointValue(CommonUtil.fuzz(tTime), (float) dBG));
 
         Line line2 = new Line(pValues);
-        line2.setHasLines(false).setHasPoints(true).setPointRadius(2).setHasLabelsOnlyForSelected(true).setColor(ChartUtils.COLOR_BLUE);// too many values so don't draw points.
+        line2.setHasLines(false).setHasPoints(true).setPointRadius(1).setHasLabelsOnlyForSelected(true).setColor(ChartUtils.COLOR_BLUE);// too many values so don't draw points.
         if (lines.size() > 3)
             lines.remove(3);
         lines.add(line2);
@@ -252,7 +254,7 @@ public class MainActivity extends WearableActivity {
         List<PointValue> pointValues = new ArrayList<PointValue>();
         for (int i = 0; i < 24; i++) {
             AxisValue aValue = new AxisValue(CommonUtil.fuzz(tTime));
-            aValue.setLabel(CommonUtil.getLabelTime(tTime));
+            //aValue.setLabel(CommonUtil.getLabelTime(tTime));
             axisXValues.add(aValue);
             pointValues.add(new PointValue(CommonUtil.fuzz(tTime), (float)9.1));
 
@@ -275,7 +277,7 @@ public class MainActivity extends WearableActivity {
 
         for (int i = 3; i <= 20; i++) {
             AxisValue aValue = new AxisValue(i);
-            aValue.setLabel(String.format("%s", i));
+            //aValue.setLabel(String.format("%s", i));
             axisYValues.add(aValue);
         }
 
@@ -292,9 +294,9 @@ public class MainActivity extends WearableActivity {
         chartData.setAxisXBottom(axisX.setHasLines(false));
         chartData.setAxisYLeft(axisY.setHasLines(false));
 
-        chartView.setZoomEnabled(false);
+        chartView.setZoomEnabled(true);
         chartView.setZoomType(ZoomType.HORIZONTAL);
-        chartView.setScrollEnabled(false);
+        chartView.setScrollEnabled(true);
 
         chartView.setLineChartData(chartData);
 
@@ -305,8 +307,8 @@ public class MainActivity extends WearableActivity {
         Viewport tempViewport = new Viewport(chartView.getMaximumViewport());
         long lTime = System.currentTimeMillis();
 
-        tempViewport.left = CommonUtil.fuzz(lTime - 60*60*1000);
-        tempViewport.right = CommonUtil.fuzz(lTime + 30*60*1000);
+        tempViewport.left = CommonUtil.fuzz(lTime - 10*60*1000);
+        tempViewport.right = CommonUtil.fuzz(lTime + 5*1000);
         if (move) {
             chartView.setCurrentViewport(tempViewport);
         }
