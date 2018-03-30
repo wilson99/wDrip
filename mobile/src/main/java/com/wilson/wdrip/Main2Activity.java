@@ -62,7 +62,7 @@ import static com.inuker.bluetooth.library.Constants.STATUS_DISCONNECTED;
 public class Main2Activity extends Activity {
     String ACTION_DATABASE = "info.nightscout.client.DBACCESS";
 
-    private static final String MAC = "F4:98:28:9D:AC:A4";
+    private static final String MAC = "FF:FF:FF:FF:FF:FF";
 
     static UUID UUID_NOTIF_SERVICE = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
     static UUID UUID_WRITE_SERVICE = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
